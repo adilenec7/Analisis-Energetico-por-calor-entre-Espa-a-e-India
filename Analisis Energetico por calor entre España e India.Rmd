@@ -1,0 +1,537 @@
+---
+title: "Analisis Energetico por calor entre España e India"
+author: "Adilene Calderon G."
+date: "12/12/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+\section{Introducción}
+
+En este trabajo aplicaremos a 2 base de datos el proceso de ingeniería de caracteristcias: Un paso fundamental al momento de trabajar una base de datos con Machine Learning.
+
+\subsection{Problema}
+
+En este caso abordaremos el tema de la energía.
+
+Analizando como afecta la localización de un pais a la producción de esta. Sabiendo que India se encuentra en zona cercana al desierto mientras que España se encuentra en climas más templados.
+
+Para la primera base de datos intentaremos usar los datos para predecir el precio de la energia según la producción de España.
+
+Viendo entonces la primera baase de datos, la cual llamaremos $Base1$ Haciendo referencia a la base de origen, pues esta sera transformada para poder concluir la preparación de la base de datos. 
+
+
+```{r}
+Base1=read.csv("energy_dataset.csv")
+
+```
+
+Esta base recopilo los datos de la energia producida en España mediante distintas fuentes de generación durante un intervalo de tiempo (Aprox. 4 años). Algunas son energias renovables, otras no. Además que incluye la demanda de energia y su costo de la energia producida. Las variables se veran a detalle más adeltante: Algunas que no necesitamos seran eliminadas y las relevantes veremos que tan relacionadas estan con
+
+Luego tenemos una base de datos similar: Se trata entonces de una base de datos sobre la energía en la India durante 2017 hasta 2020. Revisando la producción de las diferentes fuentes de energía, aqui no viene el precio. Pero podemos intentar predecir el consumo de cierta región de la India.
+
+```{r}
+Base2=read.csv("file_02.csv",dec=".")
+```
+
+\section{Analisis de Datos}
+Ahora partiremos de una revisión más detallada de las bases de datos. Viendo las variables con mayor detenimiento que en la introducción, a modo de ver alguna problema con estas que podamos resolver antes de la predicción.
+
+\subsection{Base 1: Energia en España}
+
+De primera instancia vemos que existen columnas poseen datos faltantes, estas las trataremos más adelante. Sin embargo tambien hay columnas que se encuentran vacias por lo que no aportan nada a la base de datos ni a nuestro trabajo, entonces las eliminaremos, usando $R$.
+
+```{r}
+#Detección de columnas vacias.
+BCol=length(Base1[1,])
+BRow=length(Base1[,1])
+Empty=array(0,dim=c(BRow,BCol))
+for(i in 1:BCol){
+    for(j in 1:BRow){
+    
+      if(is.na(Base1[j,i])==T){
+        Empty[j,i]=1
+     
+      }
+    }
+}
+
+VSum=rep(0,BCol)
+
+for(i in 1:BCol){
+  
+  VSum[i]=sum(Empty[,i])
+  
+}
+VSum
+```
+Con $VSum$ vemos que la base de datos SI posee datos faltantes pero estos se trataran más adelante. Ahora lo que haremos será eliminar las 2 columnas vacias que se pueden apreciar. Con el vector es claro que las columnas $11$ y $24$ estan vacias, por lo tanto las eliminaremos
+
+```{r}
+library(dplyr)
+EnergySpain=select(Base1,-colnames(Base1)[c(11,24)])
+
+BCol2=length(EnergySpain[1,])
+Empty=array(0,dim=c(BRow,BCol))
+for(i in 1:BCol2){
+    for(j in 1:BRow){
+      if(is.na(EnergySpain[j,i])==T){
+        Empty[j,i]=1
+      }
+    }
+}
+
+VSum2=rep(0,BCol)
+
+for(i in 1:BCol){
+  
+  VSum2[i]=sum(Empty[,i])
+  
+}
+VSum2
+
+
+
+```
+
+Ahora en $VSum2$ vemos que ya no hay columnas vacias en nuestra base de datos, recordando que los datos faltantes en columnas no vacias se verán más adelante. 
+
+También eliminaremos las columnas que no aporten nada, es decir, las columnas con puros ceros.
+
+```{r}
+Prueba=na.omit(EnergySpain)
+
+Z=length(Prueba[1,])
+Deletezeros=rep(0,Z)
+for(i in 2:Z){
+  
+  if( sum(Prueba[,i])==0 ){
+    
+    Deletezeros[i]=i
+  
+    }
+}
+Deletezeros
+```
+
+Entonces las columnas $4,8,9,10,14,20$ son puros ceros, entonces no afectaron al precio. Entonces podemos eliminarlas. 
+
+```{r}
+EnergySpain=select(EnergySpain,-colnames(EnergySpain)[c(4,8,9,10,14,20)])
+```
+
+Como la base de datos se trata de un registro de la energía generada en cada tipo de energía, teniendo desconocimiento del encargado del registro de datos supondremos que son coherentes (Aun con el pendiente de los datos faltantes). Entonces procedemos a ver un poco más a detalle las variables.
+
+Como queremos predecir el precio de la energía eléctrica podemos prescidir de la hora y agruparemos las producciones por fechas.
+
+```{r}
+EnergySpain$time=as.Date(EnergySpain$time)
+SpainDate=unique(EnergySpain$time)
+NDSpain=length(SpainDate)    #Número de dias vistos en la base de datos.
+
+#Energia producida por biomasa
+
+Biomass=rep(0,NDSpain)
+Solar=rep(0,NDSpain)
+PricesA=rep(0,NDSpain)
+for(i in 1:NDSpain){
+  Q=filter(EnergySpain,time==SpainDate[i])
+  Biomass[i]=sum(Q$generation.biomass)
+  Solar[i]=sum(Q$generation.solar)
+  PricesA[i]=mean(Q$price.actual)
+}
+
+plot(SpainDate,Solar,type="l",col="red",main = "Algunas Energia en España",ylab="Energia producida en MW",xlab="")
+lines(SpainDate,Biomass,col="gray")
+
+
+```
+Aqui podemos ver, por ejemplo que en España se produce en promedio mucha más energía solar que Biomasa. Ahora veremos la energía solar con respecto al costo promedio por dia de la energia. 
+
+```{r}
+plot(SpainDate,Solar,col="red",type="l",main="Energia Solar en España",ylab="MW",xlab="")
+
+plot(SpainDate,PricesA,col="darkgreen",type="l",ylab="Precios en EUR/MWh",xlab="",main="Precio promedio de la energia")
+```
+
+Como podemos ver en las graficas anteriores cuando la producción de energia solar disminuyo el precio de la energía aumento. ¿Significa que estan relacionadas?
+Más adelante verificaremos que energias influyen más en el precio actual, esto con la finalidad de elegir la mejor para la predicción del precio de la energia promedio.
+
+\subsection{Tidy data}
+
+La base de datos solo tiene un punto de vista: La producción de energia durante cada hora del dia, durante 4 años. Mostrando que tanta energía en $\text{MW}$ es producida en España distinguiendo entre fuentes. Además del precio de la energía y una predicción realizada por los encargados de la base de datos. 
+Entonces por la base de datos solo tenemos la producción de energía como dato además de los precios para predecir el precio a futuro de la energía electrica. 
+
+Entonces retiraremos las columnas que no serán utilizadas para la predicción. 
+
+```{r}
+#Eliminamos la demanda y las observaciones del sol y el viento
+E.Spain=select(EnergySpain,-colnames(EnergySpain)[16:19])
+
+```
+
+Quedandonos con el siguiente listado de variables
+\begin{itemize}
+\item $\it{time}$: La fecha en la que se tomo el registro (Para el trabajo se omitiran las horas)
+\item $\it{generation.biomass}$: Energía generada por biomasa en Megavatios $\text{MW}$
+\item $\it{generation.fossil.brown.coal.lignite}$: Energía generada por la quema de fosiles tipo lignite (carbon marrón) en Megavatios $\text{MW}$
+\item $\it{generation.fossil.gas}$: Energía generada por gas de carbon en Megavatios $\text{MW}$
+\item $\it{generation.fossil.hard.coal}$: Energía generada por carbon en Megavatios $\text{MW}$
+\item $\it{generation.fossil.oil}$: Energía generada por aceites fosiles en Megavatios $\text{MW}$
+\item $\it{generation.hydro.pumped.storage.consumption}$: Energía generada por bombeo de agua en Megavatios $\text{MW}$
+\item $\it{generation.hydro.run.of.river.and.poundage}$: Energía generada por los rios en Megavatios $\text{MW}$
+\item $\it{generation.hydro.water.reservoir}$: Energía generada por reservas de centrales hidroelécricas en Megavatios $\text{MW}$
+\item $\it{generation.nuclear}$: Energía generada por las plantas nucleares en Megavatios $\text{MW}$
+\item $\it{generation.other}$: Energía generada por otras fuentes no renovables en Megavatios $\text{MW}$
+\item $\it{generation.other.renewable}$: Energía generada por otras fuentes renovables en Megavatios $\text{MW}$
+\item $\it{generation.solar}$: Energía generada por el sol en Megavatios $\text{MW}$
+\item $\it{generation.waste}$: Energía generada por basura en Megavatios $\text{MW}$
+\item $\it{generation.wind.onshore}$: Energía generada por el viento en Megavatios $\text{MW}$
+\item $\it{price.day.ahead}$:Precio previsto en $\text{EUR/MWh}$
+\item $\it{price.actual}$: Precio de la energía en $\text{EUR/MWh}$
+\end{itemize}
+
+\subsection{Limpieza de datos}
+
+Ya comenzamos en el analisis con la limpieza, corrigiendo el formato de fechas (a costo de la horas), eliminando columnas vacias o nulas (todo ceros). Ahora nos queda una de las cosas mas mencionadas durante el trabajo: Los datos faltantes, además de los valores extremos. 
+
+Con los datos faltantes veremos primeros cuantos hay por columna. Para eso recordemos $VSum2$.
+
+```{r}
+VSum2
+
+Question=VSum2/length(E.Spain[,4])
+Question
+```
+
+Entonces observamos Question. Llamada así porque aqui entra la duda de que metodo usar para tratar los datos faltantes. Notemos primero que al ser un registro de producción de energía los datos faltantes son totalmente aleatorios. Luego para todas las columnas.
+
+```{r}
+Percentage=round(Question*100,4)
+Percentage
+```
+Vemos que el porcentaje de datos faltantes es menor del $0.11\%$, es decir demasiado poco en relación con el tamaño de la base de datos. Por lo tanto podemos eliminar las filas que contengan datos faltantes con la certeza de no afectar la distribución de los datos.
+
+Para eso checaremos los datos faltantes para eliminar las filas mientras recorremos las columnas.
+
+```{r}
+E.Col=length(colnames(E.Spain))
+for(j in 2:E.Col){
+for(i in 1:BRow){
+  if(is.na(E.Spain[i,j])==T){
+    E.Spain=E.Spain[-i,]
+  }
+}
+}
+NewRow=length(E.Spain$time)
+Empty2=array(0,dim=c(NewRow,E.Col))
+Prueba2=rep(0,E.Col)
+ENA.Spain=is.na(E.Spain)
+
+for(i in 1:E.Col){
+  Prueba2[i]=sum(as.numeric(ENA.Spain[,i]))
+}
+
+Prueba2
+```
+Por Prueba2 podemos ver que ya no tenemos valores faltantes. Entonces podemos seguir con los valores valores extremos y la correlación de las variables. Procedemos primero con summarys de cada variable.
+
+```{r}
+summary(E.Spain)
+```
+ 
+ y boxplot de algunas.
+ 
+```{r}
+par(mfrow=c(2,2))
+boxplot(E.Spain$price.actual,horizontal = T,main="Precio de la Energía",col="darkgreen")
+boxplot(E.Spain$generation.solar,horizontal = T,main="Energía Solar",col="red")
+boxplot(E.Spain$generation.fossil.oil,horizontal = T,main="Energía Fosil")
+```
+ 
+Vemos que tenemos muchos valores extremos en algunos de los diagramas de caja. La energía solar no posee valores extremos, sin embargo los datos tienen un sesgo a la izquierda.
+
+Finalmente con la base de datos de energía española, veremos cuales de las 14 fuentes de energía tienen mayor relación con el precio de la energía, siendo eso respondido por la Covarianza. 
+
+
+```{r}
+Covar=array(NA,dim=c(1,14))
+colnames(Covar)=colnames(E.Spain)[2:15]
+
+for(i in 1:14){
+  Covar[1,i]=round(cor(E.Spain$price.actual,E.Spain[,i+1]),4)
+}
+
+Covar
+
+```
+Como la correlación es diferente de cero, existe una relación entre las diferentes energias con respecto al precio. Algo a considerar para una futura predicción seria usar las energías con mayor coeficiente de correlación en valor absoluto.
+
+```{r}
+Plus=max(Covar)
+Minus=min(Covar)
+
+Plus
+Minus
+
+colnames(Covar)[c(4,6)]
+```
+
+Teniendo que las energias que mayor peso tienen con respecto al precio son la de carbon. Por lo tanto serian las variables más adecuadas para usarse para una predicción sobre el precio de la energía.
+
+Finalmente, de haber partido de la base de datos $Base1$ terminamos en la base de datos $E.Spain$ a la cual se anexara al diccionario antes mencionado (Este se anexara fuera de codigo) y se exportara en un archivo .csv
+
+```{r}
+write.csv(E.Spain,"Predicción de precio de energía electrica.csv")
+```
+
+\section{Base 2: Energía en la India}
+
+Ahora cambiamos a la India, en este caso no tenemos tantas fuentes de energía.
+
+```{r}
+colnames(Base2)
+```
+Siendo unicamnete 3, la termica, la nuclear y la hidroelecrica. Sin embargo la diferencia esta en qu la base de datos divide a la India en regiones.
+
+```{r}
+Regions=unique(Base2$Region)
+Regions
+```
+
+Entonces en este caso podemos focalizarnos en las regiones y preparar la base de datos para predecir cual de las regiones tiene mayor peso en la energia eléctrica total de la India. 
+\subsection{Analisis y Limpieza de Datos}
+
+En este caso tenemos un problema, vease que la base de datos posee p
+
+```{r}
+S=Base2$Thermal.Generation.Actual..in.MU.[2]
+S
+
+```
+Aqui tenemos que los números estan en forma de texto, esto puede resolverse con $as.numeric$, pero la coma (,) hace que esto no sea efectivo, sin embargo esto se puede resolver con la libreria $stringr$.
+
+```{r}
+library(stringr)
+
+str_remove_all(S,",")
+
+```
+Entonces la coma desaparece y podemos trabajar con $as.numeric$
+
+
+```{r}
+N2Row=length(Base2$Region)
+N2Col=length(colnames(Base2))
+
+for(i in 1:6){
+  for(j in 1:N2Row){
+    Base2[j,i+3]=str_remove_all(Base2[j,i+3],",")
+  }
+  Base2[,i+3]=as.numeric(Base2[,i+3])
+}
+
+```
+
+Ahora, como buscamos el aporte real de cada estado, eliminaremos las columnas de aportaciones estimadas
+
+```{r}
+IndianEnergy=Base2[,-c(5,7,9)]
+IndianEnergy$Date=as.Date(IndianEnergy$Date)
+
+```
+
+Ahora veremos la generación de la India por región. Para ver el comportamiento de las fuentes de energia por estado
+
+```{r}
+IndianDates=unique(IndianEnergy$Date)
+nID=length(IndianDates)
+EIndian=rep(0,nID)
+GIndian=EIndian
+FIndian=EIndian
+for(i in 1:nID){
+  
+  QQ=filter(IndianEnergy,Date==IndianDates[i])
+  EIndian[i]=sum(QQ$Thermal.Generation.Actual..in.MU)
+  GIndian[i]=sum(QQ$Nuclear.Generation.Actual..in.MU)
+  FIndian[i]=sum(QQ$Hydro.Generation.Actual..in.MU)
+}
+
+plot(IndianDates,EIndian,type="l",col="orange")
+lines(IndianDates,GIndian)
+lines(IndianDates,FIndian)
+
+
+```
+
+
+Notamos que dos de las graficas no aparecen. Esto es porque en las generación Nuclear hay muchos valores faltantes
+
+```{r}
+
+X=as.numeric(is.na(IndianEnergy$Nuclear.Generation.Actual..in.MU.))
+
+sum(X)*100/N2Row
+```
+
+Tenemos que el $40\%$ de los valores de la energia nuclear son faltantes, al ser demasiados puede esta darnos muy poca información, por lo tanto optaremos por descartarla del analisis. Entonces checamos la energía termica e hidroelectrica.
+
+```{r}
+par(mfrow=c(2,1))
+plot(IndianDates,EIndian,type="l",col="orange",main="Energía Térmica en la India",ylab="UM",xlab="")
+plot(IndianDates,FIndian,type="l",main="Energía Hidroeléctrica en la India",ylab="UM",xlab="",col="blue")
+
+```
+Como se puede apreciar la energía termica es significativamente mayor. Entonces podemos concluir que la energia principal en la India seria la termica, lo cual tiene sentido por su ubicación. 
+
+
+\subsection{tidy data}
+
+La base de datos es más pequeña que la anterior, entonces la transformación que recibio fue la vista en el Analisis y Limpieza de Datos, ya que la energia nuclear no nos podria dar mucha información debido a la gran cantidad de datos faltantes. Entonces la base de datos quedaria como sigue.
+
+```{r}
+E.Indian=IndianEnergy[,-c(1,5)]
+colnames(E.Indian)
+```
+Donde
+
+\begin{itemize}
+\item $\it{Date}$: La fecha de registro del dato
+\item $\it{Region}$: La región de la India donde se registro.
+\item $\it{Thermal.Generation.Actual..in.MU.}$: La energía térmica generada en $\text{MU}$
+\item $\it{Hydro.Generation.Actual..in.MU}$ La energía hidroeléctrica generada en $\text{MU}$
+\end{itemize}
+
+
+
+
+Ya con las fechas en el formato adecuado, al igual que la energia generada representada como un número, la base de datos estaria preparada para predecir la producción de cada región en un tiempo determinado sobre una energia en particular o la total (la suma de las 2). 
+
+Finalmente veremos los puntos extremos de ambas Energias.
+
+```{r}
+
+
+par(mfrow=c(1,2))
+boxplot(E.Indian$Thermal.Generation.Actual..in.MU.,horizontal = T,
+        main="Energia Térmica en la India",col="orange")
+boxplot(E.Indian$Hydro.Generation.Actual..in.MU.,horizontal = T,
+        main="Energia Hidroelectrica en la India",col="blue")
+```
+
+Entonces vemos que existen muchos más valores extremos en la energia Térmica que en la Hidroeléctrica. 
+Para concluir con el analisis exportaremos la base de datos modificada.
+
+```{r}
+write.csv(E.Indian,"Energia en India.csv")
+```
+
+Ahora podemos hacer la comparativa entre Esapaña e India, pero antes debemos de restringir el periodo de tiempo. viendo lo siguiente 
+
+```{r}
+
+Solar2=rep(0,nID)
+for(i in 1:nID){
+  
+  Q=filter(E.Spain,time==IndianDates[i])
+  Solar2[i]=sum(Q$generation.solar)
+}
+
+
+
+
+Solar2=na.omit(Solar2)
+for(i in 1:length(Solar2)){
+  if(Solar2[i]==0){
+    Solar2[i]=NA
+  }
+}
+Solar2=na.omit(Solar2)
+
+
+par(mfrow=c(1,2))
+boxplot(EIndian,horizontal = T,
+        main="Energia Térmica en la India",col="orange")
+boxplot(Solar2,horizontal = T,main="Energía Solar en España",col="red")
+
+```
+
+Entonces podemos ver que España con la energia solar aprovecha el calor de una manera más eficiente que la India. Haciendo claro que más que la ubicación del pais es la organización del mismo quien decidira la producción de cierta energía.
+
+\section{Reducción Dimensional}
+Para finaliza este trabajo trataremos de aplicar algun metodo de reducción de caracteristicas
+\subsection{Base de Datos 1}
+Ahora veremos si podemos reducir las dimensiones de las fuentes de energia de España.
+
+Para este caso aplicaremos el metodo $PCA$ o analisis de componentes principales, a modo de agrupar las fuentes de energia en menos variables. Por lo tanto usaremos una parte de la base de datos transformada para aplicar el metodo.
+
+```{r}
+PCAdf=select(E.Spain,seq(2,15))
+```
+
+Ahora si, aplicaremos PCA sobre las fuentes de energía y trataremos de visualizar las variables en terminos de menos variables. 
+
+```{r}
+prSpain<-prcomp(PCAdf, scale = FALSE)
+
+
+
+
+library(FactoMineR)
+library(stats)
+library(factoextra)
+library(ggplot2)
+
+Vis.Spain=PCA(X=PCAdf,scale.unit = FALSE,ncp=14,graph = F)
+par(mfrow=c(1,2))
+fviz_pca_ind(Vis.Spain,col.ind = "cos2", gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+            repel = FALSE)
+
+fviz_pca_var(Vis.Spain,col.var = "contrib",gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+            repel = FALSE)
+
+
+```
+
+Aqui vemos como las 14 variables son usadas como "ejes" para combinarlas dejandolas en solo 2 variables. 
+
+```{r}
+
+biplot(x = prSpain, scale = 0, cex = 0.6, col = c("yellow", "black"))
+
+
+```
+Quedando esto, las 14 fuentes de energía combinadas en 2 variables $PC1$ Y $PC2$. Además que estas 2 nuevas vaariables tienen una relación del $50%$ con las 14 variables.
+
+\subsection{Base de Datos 2}
+En el caso de la Base de datos sobre la india tenemos que solamente tenemos 2 dimensiones númericas, por lo tanto se piensa que el PCA no es necesario para esta base de datos en particular, menos aun que se elimino la energía nuclear por su alto radio de valores faltantes. 
+
+
+\section{Conclusion}
+
+En este trabajo se hizo claro la importancia del proceso de ingenieria de caracteristicas, siendo adecuada una preparación de la base de datos a usar para algun metodo Machine Learning. 
+
+Con respecto a la comparativa entre España a India, cabe destacar la falta de detalle en cuanto a las variables a evaluar, ya que a pesar que se tomaron las mismas fechas, carecemos de información con respecto a la tecnologia que usa cada pais para la generación y almacenación, ignorando tambien su demanda de energía.
+
+Algunos puntos a resaltar pudiera ser la falta de contextualizacion sobre los problemas a la hora de elegir el metodo de reducción de caractéristicas, pues la problematica principal era la predicción del costo de la energia (Base 1) y el desarrollo energetico de las regiones en la India (Base 2). Pero a fin de cuentas esto es una preparación, no se ha probado nada. Y no hay metodos para garantizar la elección correcta del metodo hasta que se pruebe un algortimo sobre la base de datos para que el tiempo de ejecución y los resultados obtenidos sean la evidencia si se utilizo el metodo adecuado, o en algunos casos no debio haberse usado algun metodo de reducción de caracterisitcas.
+
+
+\section{Referencias}
+$\bf{Base\ de\ Datos}$
+\begin{enumerate}
+\item 
+Navin Mundhra. Daily Power Generation in India (2017-2020). Kaggle.com. Published 2017. Accessed December 14, 2021.  $https://www.kaggle.com/navinmundhra/daily-power-generation-in-india-20172020?select=file_02.csv.$
+
+\item 
+Jhana N. Hourly energy demand generation and weather. Kaggle.com. Published 2019. Accessed December 14, 2021. $https://www.kaggle.com/nicholasjhana/energy-consumption-generation-prices-and-weather.$
+\end{enumerate}
+
+
+
+
+
+
+
